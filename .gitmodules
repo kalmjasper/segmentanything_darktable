@@ -1,0 +1,4 @@
+[submodule "external/segment-anything-2"]
+	path = external/segment-anything-2
+	url = https://github.com/facebookresearch/segment-anything-2.git
+	branch = sam2.1

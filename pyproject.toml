@@ -10,6 +10,10 @@ package-mode = false
 python = "^3.12"
 numpy = "^2.2.1"
 defusedxml = "^0.7.1"
+"sam 2" = { path = "external/segment-anything-2", develop = true }
+torch = "^2.5.1"
+torchvision = "^0.20.1"
+opencv-python = "^4.10.0.84"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "*"

@@ -3,13 +3,13 @@ repos:
     hooks:
       - id: ruff-format
         name: Ruff Format
-        entry: bash -c 'poetry run ruff format'
+        entry: bash -c 'poetry run ruff format src/'
         language: system
         types: [python]
         files: ^(.*\.py|pyproject\.toml)$
       - id: ruff
         name: Ruff
-        entry: bash -c 'poetry run ruff check --fix'
+        entry: bash -c 'poetry run ruff check --fix src/'
         language: system
         types: [python]
         files: ^(.*\.py|pyproject\.toml)$

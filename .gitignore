@@ -20,3 +20,5 @@
 /poetry.toml
 
 __pycache__
+/checkpoints/
+test.jpeg
