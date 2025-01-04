@@ -71,6 +71,7 @@ lint.ignore = [
     "TD002",
     "TD003",
     "FIX002", # too verbose descriptions of todos
+    "PLR0915",
 ]
 
 [tool.ruff.lint.per-file-ignores]

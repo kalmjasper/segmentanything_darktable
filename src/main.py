@@ -28,7 +28,9 @@ import segment
 
 # Example usage
 if __name__ == "__main__":
-    segment.annotate_image(Path("test.jpeg"))
+    segment.annotate_image(
+        Path("/Users/jasperinsinger/Documents/Piccas/Maeslandkering 25-06-23/darktable_exported/DSCF1336.jpg")
+    )
     # if torch.cuda.is_available():
     #     device = torch.device("cuda")
     # elif torch.backends.mps.is_available():

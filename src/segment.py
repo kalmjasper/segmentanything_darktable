@@ -38,64 +38,101 @@ def get_predictor() -> tuple[SAM2ImagePredictor, torch.device]:
     return predictor, device
 
 
-def annotate_image(path: Path):
+def rescale_image(image: np.ndarray, max_height: int) -> np.ndarray:
+    height, width = image.shape[:2]
+    scale = max_height / height
+    new_width = int(width * scale)
+    return cv2.resize(image, (new_width, max_height), interpolation=cv2.INTER_AREA)
+
+
+def show_complete_image(
+    image: np.ndarray, mask: np.ndarray, points: list[tuple[int, int]], labels: list[int], filename: str
+):
+    mask = mask.astype(bool)
+    display_image = image.copy()
+
+    # Only apply mask if there are masked pixels
+    if mask.any():
+        display_image[mask] = display_image[mask] * 0.5 + np.array([0, 0, 255]) * 0.5
+
+    # Redraw all points
+    radius = max(5, min(display_image.shape[:2]) // 100)
+    for (x_point, y_point), label in zip(points, labels, strict=True):
+        color = (0, 255, 0) if label == 1 else (0, 0, 255)
+        cv2.circle(display_image, (x_point, y_point), radius, color, -1)
+
+    cv2.imshow(filename, display_image)
+
+
+def annotate_image(path: Path) -> np.ndarray:
     # Get predictor and device using the new function
     predictor, device = get_predictor()
 
-    # Load and prepare image
-    image = cv2.imread(str(path))
-    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    with torch.inference_mode(), torch.autocast(device.type, dtype=torch.float16):
+        # Load and prepare image
+        image = cv2.imread(str(path))
 
-    # Initialize points
-    points = []
-    labels = []
+        # Extract filename without extension using pathlib
+        filename = path.stem
 
-    def mouse_callback(event, x, y, _flags, _param):
-        if event == cv2.EVENT_LBUTTONDOWN:  # Left click for positive points
-            points.append([x, y])
-            labels.append(1)
-            cv2.circle(display_image, (x, y), 5, (0, 255, 0), -1)
-            cv2.imshow("Image", display_image)
-        elif event == cv2.EVENT_RBUTTONDOWN:  # Right click for negative points
-            points.append([x, y])
-            labels.append(0)
-            cv2.circle(display_image, (x, y), 5, (0, 0, 255), -1)
-            cv2.imshow("Image", display_image)
+        # Rescale image to max 1080p while maintaining aspect ratio
+        image = rescale_image(image, 1080)
 
-    # Create window and set mouse callback
-    cv2.namedWindow("Image")
-    display_image = image.copy()
-    cv2.imshow("Image", display_image)
-    cv2.setMouseCallback("Image", mouse_callback)
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-    # Set image for predictor
-    predictor.set_image(image_rgb)
+        # Initialize points
+        points = []
+        labels = []
 
-    while True:
-        key = cv2.waitKey(1) & 0xFF
+        # Create window and set mouse callback
+        cv2.namedWindow(filename)
 
-        if key == ord("g"):  # Generate mask when 'g' is pressed
-            if points:
-                with torch.inference_mode(), torch.autocast(device.type, dtype=torch.float16):
-                    masks, scores, _ = predictor.predict(
-                        point_coords=np.array(points), point_labels=np.array(labels), multimask_output=False
-                    )
+        show_complete_image(image, np.zeros_like(image), [], [], filename)
 
-                # Show mask overlay
-                mask = masks[0].astype(bool)  # Convert to boolean array
-                mask_overlay = display_image.copy()
-                mask_overlay[mask] = mask_overlay[mask] * 0.5 + np.array([0, 0, 255]) * 0.5
-                cv2.imshow("Mask", mask_overlay)
+        mask = None
 
-                # return masks
+        def mouse_callback(event, x, y, _flags, _param):
+            if event == cv2.EVENT_LBUTTONDOWN:  # Left click for positive points
+                points.append([x, y])
+                labels.append(1)
+            elif event == cv2.EVENT_RBUTTONDOWN:  # Right click for negative points
+                points.append([x, y])
+                labels.append(0)
 
-        elif key == ord("c"):  # Clear points when 'c' is pressed
-            points.clear()
-            labels.clear()
-            display_image = image.copy()
-            cv2.imshow("Image", display_image)
+            if len(points) == 0:
+                return
 
-        elif key == ord("q"):  # Quit when 'q' is pressed
-            break
+            masks, scores, _ = predictor.predict(
+                point_coords=np.array(points), point_labels=np.array(labels), multimask_output=True
+            )
 
-    cv2.destroyAllWindows()
+            # Get mask with highest score
+            best_mask_idx = np.argmax(scores)
+
+            nonlocal mask  # Save the mask to return later
+            mask = masks[best_mask_idx].astype(bool)
+
+            show_complete_image(image, mask, points, labels, filename)
+
+        cv2.setMouseCallback(filename, mouse_callback)
+
+        # Set image for predictor
+        predictor.set_image(image_rgb)
+
+        try:
+            while True:
+                key = cv2.waitKey(1) & 0xFF
+
+                if key == ord("c"):  # Clear points when 'c' is pressed
+                    points.clear()
+                    labels.clear()
+                    display_image = image.copy()
+                    cv2.imshow(filename, display_image)
+
+                elif key == ord("q"):  # Quit when 'q' is pressed
+                    if mask is None:
+                        raise ValueError("No mask found")
+                    return mask
+
+        finally:
+            cv2.destroyAllWindows()
