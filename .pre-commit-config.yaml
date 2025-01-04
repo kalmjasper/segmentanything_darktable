@@ -1,0 +1,21 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: Ruff Format
+        entry: bash -c 'poetry run ruff format'
+        language: system
+        types: [python]
+        files: ^(.*\.py|pyproject\.toml)$
+      - id: ruff
+        name: Ruff
+        entry: bash -c 'poetry run ruff check --fix'
+        language: system
+        types: [python]
+        files: ^(.*\.py|pyproject\.toml)$
+      - id: mypy
+        name: Mypy
+        entry: bash -c 'poetry run mypy src/'
+        language: system
+        types: [python]
+        files: ^(.*\.py|pyproject\.toml)$
