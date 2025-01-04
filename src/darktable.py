@@ -1,8 +1,107 @@
 import base64
+import logging
 import struct
 import zlib
+from collections.abc import Sequence
 from dataclasses import dataclass
-from enum import IntEnum
+from enum import IntEnum, IntFlag
+from pathlib import Path
+
+from defusedxml import ElementTree as DefusedET  # type: ignore
+
+
+class MaskType(IntFlag):
+    """Darktable mask types."""
+
+    NONE = 0
+    CIRCLE = 1 << 0
+    PATH = 1 << 1
+    GROUP = 1 << 2
+    CLONE = 1 << 3
+    GRADIENT = 1 << 4
+    ELLIPSE = 1 << 5
+    BRUSH = 1 << 6
+    NON_CLONE = 1 << 7
+
+
+class PointState(IntEnum):
+    """State of a path point."""
+
+    NORMAL = 1
+    USER = 2
+
+
+@dataclass
+class PathPoint:
+    """A point in a path mask."""
+
+    corner: tuple[float, float]  # x,y coordinates of the point
+    ctrl1: tuple[float, float]  # x,y coordinates of the first control point
+    ctrl2: tuple[float, float]  # x,y coordinates of the second control point
+    border: tuple[float, float]  # x,y coordinates of the border point
+    state: PointState  # state of the point
+
+
+@dataclass
+class DarktablePathMask:
+    """A darktable path mask."""
+
+    points: Sequence[PathPoint]  # List of path points
+    mask_id: int
+    name: str
+    version: int
+
+
+def read_darktable_masks(path: Path) -> list[DarktablePathMask]:
+    """
+    Read darktable masks from an XMP file.
+
+    Args:
+        path: Path to the XMP file
+
+    Returns:
+        List of DarktablePathMask objects, containing only Path type masks
+
+    """
+    tree = DefusedET.parse(path)
+    root = tree.getroot()
+
+    # Find the masks_history sequence
+    ns = {
+        "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+        "darktable": "http://darktable.sf.net/",
+    }
+    masks_seq = root.find(".//darktable:masks_history/rdf:Seq", ns)
+
+    if masks_seq is None:
+        return []
+
+    masks = []
+    for mask in masks_seq.findall("rdf:li", ns):
+        # Check if this is a path mask (type 2)
+        mask_type = int(mask.get(f"{{{ns['darktable']}}}mask_type", "0"))
+        if mask_type != MaskType.PATH:
+            logging.warning(f"Skipping mask type {mask_type}")
+            continue
+
+        mask_points = mask.get(f"{{{ns['darktable']}}}mask_points", "")
+        if not mask_points:
+            continue
+
+        # Decode and parse the points
+        decoded = decode_xmp(mask_points)
+        points = parse_path_points(decoded)
+
+        masks.append(
+            DarktablePathMask(
+                points=points,
+                mask_id=int(mask.get(f"{{{ns['darktable']}}}mask_id", "0")),
+                name=mask.get(f"{{{ns['darktable']}}}mask_name", ""),
+                version=int(mask.get(f"{{{ns['darktable']}}}mask_version", "0")),
+            )
+        )
+
+    return masks
 
 
 def decode_xmp(input_str: str) -> bytes:
@@ -46,24 +145,6 @@ def decode_xmp(input_str: str) -> bytes:
         raise ValueError("Invalid hex data")
 
     return bytes.fromhex(input_str)
-
-
-class PointState(IntEnum):
-    """State of a path point."""
-
-    NORMAL = 1
-    USER = 2
-
-
-@dataclass
-class PathPoint:
-    """A point in a path mask."""
-
-    corner: tuple[float, float]  # x,y coordinates of the point
-    ctrl1: tuple[float, float]  # x,y coordinates of the first control point
-    ctrl2: tuple[float, float]  # x,y coordinates of the second control point
-    border: tuple[float, float]  # x,y coordinates of the border point
-    state: PointState  # state of the point
 
 
 def parse_path_points(points_raw: bytes) -> list[PathPoint]:

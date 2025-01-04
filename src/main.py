@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 import darktable
 
@@ -6,14 +7,10 @@ import darktable
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
-    # Example mask string
-    mask = "gz02eJwz8wuzu7WIy776joedrIy4/af9yXb6wX/szp7xsQVhRgYGhp9Oe+yqdn6161Rabjd5wju7rOSLdsmPUNXsffnSrk9WwX72og92PkuE7R8YPLa7ME3HHlnN0beT7by3uNqb8q202+/hab96Vq3ddXknFDUAo4M8/Q=="
-
-    logging.info("Analyzing darktable path mask...\n")
-
-    decoded = darktable.decode_xmp(mask)
-    logging.info(decoded)
-
-    points = darktable.parse_path_points(decoded)
-    for point in points:
-        logging.info(point)
+    masks = darktable.read_darktable_masks(
+        Path("/Users/jasperinsinger/Documents/Piccas/Amsterdam 02-01-25/DSCF7089.RAF.xmp")
+    )
+    for mask in masks:
+        logging.info(f"MASK {mask.name}")
+        for point in mask.points:
+            logging.info(point)
