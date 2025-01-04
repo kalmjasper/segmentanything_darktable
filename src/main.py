@@ -11,6 +11,9 @@ if __name__ == "__main__":
 
     logging.info("Analyzing darktable path mask...\n")
 
-    decoded, length = darktable.decode_xmp(mask)
+    decoded = darktable.decode_xmp(mask)
     logging.info(decoded)
-    logging.info(length)
+
+    points = darktable.parse_path_points(decoded)
+    for point in points:
+        logging.info(point)
