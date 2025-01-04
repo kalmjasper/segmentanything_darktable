@@ -54,6 +54,11 @@ def show_complete_image(
     # Only apply mask if there are masked pixels
     if mask.any():
         display_image[mask] = display_image[mask] * 0.5 + np.array([0, 0, 255]) * 0.5
+        outline = extract_outline_from_mask(mask)
+
+        if outline:  # Only draw if we have outline points
+            outline_array = np.array(outline)
+            cv2.polylines(display_image, [outline_array], isClosed=True, color=(0, 255, 0), thickness=2)
 
     # Redraw all points
     radius = max(5, min(display_image.shape[:2]) // 100)
@@ -62,6 +67,37 @@ def show_complete_image(
         cv2.circle(display_image, (x_point, y_point), radius, color, -1)
 
     cv2.imshow(filename, display_image)
+
+
+def extract_outline_from_mask(mask: np.ndarray) -> list[tuple[int, int]]:
+    """
+    Extract the outline/contour points from a binary mask.
+
+    Args:
+        mask: Binary mask as numpy array
+
+    Returns:
+        List of (x,y) coordinate tuples forming the contour
+
+    """
+    # Convert mask to uint8 for contour detection
+    mask_uint8 = mask.astype(np.uint8) * 255
+
+    # Find contours
+    contours, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Get the largest contour
+    if not contours:
+        return []
+
+    largest_contour = max(contours, key=cv2.contourArea)
+
+    # Apply smoothing by approximating the polygon with fewer points
+    epsilon = 0.0005 * cv2.arcLength(largest_contour, closed=True)  # 0.5% of perimeter
+    smoothed_contour = cv2.approxPolyDP(largest_contour, epsilon, closed=True)
+
+    # Convert contour points to list of tuples
+    return [(int(point[0, 0]), int(point[0, 1])) for point in smoothed_contour]  # type: ignore
 
 
 def annotate_image(path: Path) -> np.ndarray:

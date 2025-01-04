@@ -28,35 +28,4 @@ import segment
 
 # Example usage
 if __name__ == "__main__":
-    segment.annotate_image(
-        Path("/Users/jasperinsinger/Documents/Piccas/Maeslandkering 25-06-23/darktable_exported/DSCF1336.jpg")
-    )
-    # if torch.cuda.is_available():
-    #     device = torch.device("cuda")
-    # elif torch.backends.mps.is_available():
-    #     device = torch.device("mps")
-    # else:
-    #     device = torch.device("cpu")
-    # print(f"using device: {device}")
-    #
-    # checkpoint = "./checkpoints/sam2.1_hiera_small.pt"
-    # model_cfg = "configs/sam2.1/sam2.1_hiera_s.yaml"
-    # predictor = SAM2ImagePredictor(build_sam2(model_cfg, checkpoint, device="mps"))
-    #
-    # with torch.inference_mode(), torch.autocast("mps", dtype=torch.float16):
-    #
-    #     image = Image.open("test.jpeg")
-    #     image = np.array(image.convert("RGB"))
-    #     predictor.set_image(image)
-    #
-    #     input_point = np.array([[500, 375]])
-    #     input_label = np.array([1])
-    #
-    #     masks, scores, logits = predictor.predict(
-    #         point_coords=input_point,
-    #         point_labels=input_label,
-    #         multimask_output=True,
-    #     )
-    #
-    #     print(masks)
-    #
+    segment.annotate_image(Path("/Users/jasperinsinger/Documents/Piccas/Amsterdam 02-01-25/DSCF7141.JPG"))
