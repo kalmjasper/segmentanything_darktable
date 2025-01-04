@@ -2,7 +2,6 @@ import base64
 import logging
 import struct
 import zlib
-from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import IntEnum, IntFlag
 from pathlib import Path
@@ -46,8 +45,7 @@ class PathPoint:
 class DarktablePathMask:
     """A darktable path mask."""
 
-    points: Sequence[PathPoint]  # List of path points
-    mask_id: int
+    points: list[PathPoint]  # List of path points
     name: str
     version: int
 
@@ -95,13 +93,79 @@ def read_darktable_masks(path: Path) -> list[DarktablePathMask]:
         masks.append(
             DarktablePathMask(
                 points=points,
-                mask_id=int(mask.get(f"{{{ns['darktable']}}}mask_id", "0")),
+                # mask_id=int(mask.get(f"{{{ns['darktable']}}}mask_id", "0")),
                 name=mask.get(f"{{{ns['darktable']}}}mask_name", ""),
                 version=int(mask.get(f"{{{ns['darktable']}}}mask_version", "0")),
             )
         )
 
     return masks
+
+
+def add_darktable_masks(path: Path, new_masks: list[DarktablePathMask]) -> None:
+    """
+    Add or update darktable masks in an XMP file.
+
+    Args:
+        path: Path to the XMP file
+        new_masks: List of DarktablePathMask objects to add/update
+
+    """
+    if len(new_masks) == 0:
+        return
+
+    tree = DefusedET.parse(path)
+    root = tree.getroot()
+
+    # Find the masks_history sequence
+    ns = {
+        "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+        "darktable": "http://darktable.sf.net/",
+    }
+    masks_seq = root.find(".//darktable:masks_history/rdf:Seq", ns)
+
+    if masks_seq is None:
+        # Create new masks sequence if it doesn't exist
+        masks_history = DefusedET.SubElement(root, f"{{{ns['darktable']}}}masks_history")
+        masks_seq = DefusedET.SubElement(masks_history, f"{{{ns['rdf']}}}Seq")
+
+    # Get existing masks to check for duplicates
+    existing_masks = {}
+    for mask in masks_seq.findall("rdf:li", ns):
+        name = mask.get(f"{{{ns['darktable']}}}mask_name", "")
+        if name:
+            existing_masks[name] = mask
+
+    # Process new masks
+    for new_mask in new_masks:
+        # Convert points to XMP format
+        points_bytes = encode_path_points(new_mask.points)
+        points_str = encode_xmp(points_bytes)
+
+        if new_mask.name in existing_masks:
+            # Update existing mask
+            existing_mask = existing_masks[new_mask.name]
+            existing_mask.set(f"{{{ns['darktable']}}}mask_points", points_str)
+        else:
+            # Create new mask entry
+            mask_elem = DefusedET.SubElement(masks_seq, f"{{{ns['rdf']}}}li")
+
+            # Set required attributes
+            mask_elem.set(f"{{{ns['darktable']}}}mask_type", str(MaskType.PATH.value))
+            mask_elem.set(f"{{{ns['darktable']}}}mask_name", new_mask.name)
+            mask_elem.set(f"{{{ns['darktable']}}}mask_version", str(new_mask.version))
+            mask_elem.set(f"{{{ns['darktable']}}}mask_points", points_str)
+            mask_elem.set(f"{{{ns['darktable']}}}mask_num", "11")  # Seems to be constant in example
+            mask_elem.set(f"{{{ns['darktable']}}}mask_nb", "3")  # Number of points
+            mask_elem.set(f"{{{ns['darktable']}}}mask_src", "0000000000000000")
+
+            # Generate random mask_id if needed
+            import random
+
+            mask_elem.set(f"{{{ns['darktable']}}}mask_id", str(random.randint(0, 2**32 - 1)))
+
+    # Write back to file
+    tree.write(path, encoding="UTF-8", xml_declaration=True)
 
 
 def decode_xmp(input_str: str) -> bytes:
@@ -147,6 +211,30 @@ def decode_xmp(input_str: str) -> bytes:
     return bytes.fromhex(input_str)
 
 
+def encode_xmp(input_bytes: bytes) -> str:
+    """
+    Encode bytes into XMP data in darktable's gz-compressed base64 format.
+
+    Args:
+        input_bytes: Raw bytes to encode
+
+    Returns:
+        String in gz-compressed base64 format with gz## prefix
+
+    """
+    # Compress the input bytes
+    compressed = zlib.compress(input_bytes)
+
+    # Calculate compression factor (rounded to nearest int)
+    factor = max(1, min(99, round(len(input_bytes) / len(compressed))))
+
+    # Convert to base64
+    b64_data = base64.b64encode(compressed).decode("ascii")
+
+    # Add gz prefix with compression factor
+    return f"gz{factor:02d}{b64_data}"
+
+
 def parse_path_points(points_raw: bytes) -> list[PathPoint]:
     """
     Parse raw bytes into a list of path points.
@@ -183,3 +271,36 @@ def parse_path_points(points_raw: bytes) -> list[PathPoint]:
         )
 
     return points
+
+
+def encode_path_points(path_points: list[PathPoint]) -> bytes:
+    """
+    Encode a list of path points into raw bytes.
+
+    Args:
+        path_points: List of PathPoint objects to encode
+
+    Returns:
+        Raw bytes containing encoded path point data
+
+    """
+    points_raw = bytearray()
+
+    for point in path_points:
+        # Pack 8 floats and 1 int into bytes
+        points_raw.extend(
+            struct.pack(
+                "8fi",
+                point.corner[0],
+                point.corner[1],
+                point.ctrl1[0],
+                point.ctrl1[1],
+                point.ctrl2[0],
+                point.ctrl2[1],
+                point.border[0],
+                point.border[1],
+                point.state.value,
+            )
+        )
+
+    return bytes(points_raw)
