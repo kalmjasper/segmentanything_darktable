@@ -100,7 +100,12 @@ def extract_outline_from_mask(mask: np.ndarray) -> list[tuple[int, int]]:
     return [(int(point[0, 0]), int(point[0, 1])) for point in smoothed_contour]  # type: ignore
 
 
-def annotate_image(path: Path) -> np.ndarray:
+def normalize_outline(outline: list[tuple[int, int]], image: np.ndarray) -> list[tuple[float, float]]:
+    height, width = image.shape[:2]
+    return [(x / width, y / height) for x, y in outline]
+
+
+def segment_outline(path: Path) -> list[tuple[float, float]]:
     # Get predictor and device using the new function
     predictor, device = get_predictor()
 
@@ -168,7 +173,9 @@ def annotate_image(path: Path) -> np.ndarray:
                 elif key == ord("q"):  # Quit when 'q' is pressed
                     if mask is None:
                         raise ValueError("No mask found")
-                    return mask
+
+                    outline = extract_outline_from_mask(mask)
+                    return normalize_outline(outline, image)
 
         finally:
             cv2.destroyAllWindows()
